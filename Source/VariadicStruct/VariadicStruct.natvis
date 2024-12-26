@@ -1,0 +1,19 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+	<!-- Align(sizeof, alignof) => ((sizeof + aligof - 1) &amp; ~(alignof - 1)) -->
+	<!-- @Note: TObjectPtr is bogus in .natvis as for 5.4.4 -->
+	
+	<Type Name="FVariadicStruct">
+		<DisplayString Condition="ScriptStruct == nullptr"> Empty </DisplayString>
+		<DisplayString Condition="((ScriptStruct->PropertiesSize + ScriptStruct->MinAlignment - 1) &amp; ~(ScriptStruct->MinAlignment - 1)) &lt;= FVariadicStruct::BUFFER_SIZE"> {ScriptStruct->NamePrivate} [SBO] </DisplayString>
+		<DisplayString Condition="((ScriptStruct->PropertiesSize + ScriptStruct->MinAlignment - 1) &amp; ~(ScriptStruct->MinAlignment - 1)) &gt;  FVariadicStruct::BUFFER_SIZE"> {ScriptStruct->NamePrivate} [HEAP] </DisplayString>
+		<Expand>
+			<Item Name="[Type]"> ScriptStruct </Item>
+			<Item Name="[Value]" Condition ="((ScriptStruct->PropertiesSize + ScriptStruct->MinAlignment - 1) &amp; ~(ScriptStruct->MinAlignment - 1)) &lt;= FVariadicStruct::BUFFER_SIZE"> (uint8*)StructBuffer </Item>
+			<Item Name="[Value]" Condition ="((ScriptStruct->PropertiesSize + ScriptStruct->MinAlignment - 1) &amp; ~(ScriptStruct->MinAlignment - 1)) &gt;  FVariadicStruct::BUFFER_SIZE">	StructMemory </Item>
+		</Expand>
+	</Type>
+	
+</AutoVisualizer>
