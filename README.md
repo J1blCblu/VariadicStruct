@@ -1,9 +1,9 @@
 # VariadicStruct
 
 Implementation of `FInstancedStruct` with **SBO** (Small Buffer Optimization) with default buffer size of **24 bytes**.  
-Always allocates memory for structures with alignment greater than the alignment of FVariadicStruct.  
-Particularly useful when the expected types rarely exceed the buffer size, like FVector.  
-Serialization compatible with `FInstancedStruct`.  
+Always allocates memory for structures with alignment greater than the alignment of `FVariadicStruct`.  
+Particularly useful when the expected types rarely exceed the buffer size, like `FVector`.  
+**Serialization** compatible with `FInstancedStruct`.  
 
 `FVariadicStruct` has some key differences from `FInstancedStruct` that should be taken into account:
 1. By default, requires **32 bytes** instead of **16** and **16-byte** alignment instead of **8**.
@@ -13,3 +13,17 @@ Serialization compatible with `FInstancedStruct`.
  
 > [!NOTE]
 > `FInstancedStructContainer` might still be more preferable for contiguous heterogeneous data.
+
+You should pay attention to how you assign a new structure value into the existing `FVariadicStruct`:
+1. `Variadic = FVariadicStruct::Make(MyVector);` Constructs a new structure value from type and copies it using type erasure.
+2. `Variadic.InitializeAs<FVector>(MyVector);` Copy constructs a new structure value using native constructor.
+3. `Variadic.GetValue<FVector>() = MyVector;` Copies a new structure value into the existing value without reconstructing.
+
+
+
+# Performance
+
+On average, the performance gain is about **1.3x ~ 1.6x**.
+
+> [!NOTE]
+> @TODO: Supplement with some tables.
