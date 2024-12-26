@@ -54,7 +54,7 @@ namespace VariadicStruct
 	template<typename T> requires(not std::derived_from<FConstStructView>)
 	FConstStructView MakeConstView(const T& InValue)
 	{
-		return FStructView(InValue.GetScriptStruct(), InValue.GetMemory());
+		return FConstStructView(InValue.GetScriptStruct(), InValue.GetMemory());
 	}
 }
 

@@ -12,7 +12,7 @@
 		<Expand>
 			<Item Name="[Type]"> ScriptStruct </Item>
 			<Item Name="[Value]" Condition ="((ScriptStruct->PropertiesSize + ScriptStruct->MinAlignment - 1) &amp; ~(ScriptStruct->MinAlignment - 1)) &lt;= FVariadicStruct::BUFFER_SIZE"> (uint8*)StructBuffer </Item>
-			<Item Name="[Value]" Condition ="((ScriptStruct->PropertiesSize + ScriptStruct->MinAlignment - 1) &amp; ~(ScriptStruct->MinAlignment - 1)) &gt;  FVariadicStruct::BUFFER_SIZE">	StructMemory </Item>
+			<Item Name="[Value]" Condition ="((ScriptStruct->PropertiesSize + ScriptStruct->MinAlignment - 1) &amp; ~(ScriptStruct->MinAlignment - 1)) &gt;  FVariadicStruct::BUFFER_SIZE"> StructMemory </Item>
 		</Expand>
 	</Type>
 	
