@@ -1,5 +1,5 @@
 {
-	"FileVersion": 1,
+	"FileVersion": 3,
 	"Version": 1,
 	"VersionName": "1.0",
 	"FriendlyName": "Variadic Struct",
@@ -7,9 +7,9 @@
 	"Category": "Runtime",
 	"CreatedBy": "Ivan Baktenkov J1blCblu",
 	"CreatedByURL": "https://github.com/J1blCblu",
-	"DocsURL": "",
+	"DocsURL": "https://github.com/J1blCblu/VariadicStruct",
 	"MarketplaceURL": "",
-	"SupportURL": "",
+	"SupportURL": "https://github.com/J1blCblu/VariadicStruct/issues",
 	"EnabledByDefault": false,
 	"CanContainContent": false,
 	"IsBetaVersion": false,

@@ -2,7 +2,7 @@
 
 #include "VariadicStruct.h"
 
-#include <cstddef> //offsetof()
+#include <cstddef> // offsetof()
 
 #include "Logging/LogMacros.h"
 #include "Misc/CString.h"
@@ -23,13 +23,13 @@
 #include "Serialization/MemoryReader.h"
 #include "Serialization/ArchiveUObject.h"
 #include "Serialization/ObjectAndNameAsStringProxyArchive.h"
-#endif // WITH_ENGINE
+#endif //  WITH_ENGINE
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(VariadicStruct)
 
 consteval void FVariadicStructValidateInvariants()
 {
-	//The following requirements needs to be met in order to avoid using std::align() to access the underlying structure memory.
+	// The following requirements needs to be met in order to avoid using std::align() to access the underlying structure memory.
 	static_assert(sizeof(FVariadicStruct::ScriptStruct) == 8 && alignof(FVariadicStruct) >= 8 && FVariadicStruct::BUFFER_SIZE >= alignof(FVariadicStruct));
 	static_assert(std::is_standard_layout_v<FVariadicStruct> && offsetof(FVariadicStruct, StructBuffer) == 0, "FVariadicStruct::StructBuffer needs to be the first member property.");
 	static_assert((FVariadicStruct::BUFFER_SIZE - sizeof(FVariadicStruct::ScriptStruct)) % alignof(FVariadicStruct) == 0 , "FVariadicStruct needs to be effectively sized.");
@@ -39,22 +39,22 @@ namespace
 {
 	struct FVariadicStructCustomVersion
 	{
-		//Custom version unique GUID.
+		// Custom version unique GUID.
 		static inline constexpr FGuid Guid{ 0x64fc2696, 0x589c216a, 0x95b4a289, 0xc72589ab };
 
-		//Version history.
+		// Version history.
 		enum Type
 		{
 			CustomVersionAdded = 0,
 
-			// -----<new versions can be added above this line>-----
+			//  -----<new versions can be added above this line>-----
 			VersionPlusOne,
 			LatestVersion = VersionPlusOne - 1
 		};
 
 	private:
 
-		//Register our custom version at startup.
+		// Register our custom version at startup.
 		static inline const FCustomVersionRegistration Registration{ Guid, FVariadicStructCustomVersion::LatestVersion, TEXT("VariadicStructCustomVersion") };
 	};
 }
@@ -68,18 +68,18 @@ FVariadicStruct::FVariadicStruct(FVariadicStruct&& InOther)
 {
 	if (InOther.ScriptStruct && !RequiresMemoryAllocation(InOther.ScriptStruct))
 	{
-		//Copy construct within the buffer.
+		// Copy construct within the buffer, otherwise memcpy will break pointers to itself within the struct (std::list).
 		InitializeAs(InOther.ScriptStruct, InOther.GetMemory());
 
-		//Invalidate other data.
+		// Invalidate other data.
 		InOther.Reset();
 	}
 	else
 	{
-		//Take ownership.
+		// Take ownership.
 		ResetStructData(InOther.ScriptStruct, InOther.StructMemory);
 
-		//Reset data.
+		// Reset data.
 		InOther.ResetStructData();
 	}
 }
@@ -100,21 +100,21 @@ FVariadicStruct& FVariadicStruct::operator=(FVariadicStruct&& InOther)
 	{
 		if (InOther.ScriptStruct && !RequiresMemoryAllocation(InOther.ScriptStruct))
 		{
-			//Copy construct within the buffer.
+			// Copy construct within the buffer, otherwise memcpy will break pointers to itself within the struct (std::list).
 			InitializeAs(InOther.ScriptStruct, InOther.GetMemory());
 
-			//Invalidate data.
+			// Invalidate data.
 			InOther.Reset();
 		}
 		else
 		{
-			//Invalidate data and release memory.
+			// Invalidate data and release memory.
 			Reset();
 
-			//Take ownership.
+			// Take ownership.
 			ResetStructData(InOther.ScriptStruct, InOther.StructMemory);
 
-			//Reset data.
+			// Reset data.
 			InOther.ResetStructData();
 		}
 	}
@@ -124,38 +124,38 @@ FVariadicStruct& FVariadicStruct::operator=(FVariadicStruct&& InOther)
 
 void FVariadicStruct::InitializeAs(const UScriptStruct* InScriptStruct, const uint8* InStructMemory /* = nullptr */)
 {
-	//If the existing type is valid and matches.
+	// If the existing type is valid and matches.
 	if (ScriptStruct && InScriptStruct == ScriptStruct)
 	{
-		//Copy properties if needed.
+		// Copy properties if needed.
 		if (InStructMemory)
 		{
 			ScriptStruct->CopyScriptStruct(GetMutableMemory(), InStructMemory);
 		}
-		else //Otherwise, reset to default state.
+		else // Otherwise, reset to default state.
 		{
 			ScriptStruct->ClearScriptStruct(GetMutableMemory());
 		}
 	}
-	else //Invalid or mismatched type.
+	else // Invalid or mismatched type.
 	{
 		Reset();
 
-		//Construct a new struct if needed.
+		// Construct a new struct if needed.
 		if ((ScriptStruct = InScriptStruct) != nullptr)
 		{
 			uint8* DestMemory = StructBuffer;
 			
-			//Allocate a new space if the buffer is too small.
+			// Allocate a new space if the buffer is too small.
 			if (RequiresMemoryAllocation(InScriptStruct))
 			{
 				DestMemory = StructMemory = static_cast<uint8*>(FMemory::Malloc(InScriptStruct->GetStructureSize(), InScriptStruct->GetMinAlignment()));
 			}
 
-			//Default initialize.
+			// Default initialize.
 			ScriptStruct->InitializeStruct(DestMemory);
 
-			//Copy properties if needed.
+			// Copy properties if needed.
 			if (InStructMemory)
 			{
 				ScriptStruct->CopyScriptStruct(DestMemory, InStructMemory);
@@ -193,7 +193,7 @@ bool FVariadicStruct::Serialize(FArchive& Ar)
 			Ar.Preload(SerializedScriptStruct);
 		}
 
-		//Initialize only if the type changes.
+		// Initialize only if the type changes.
 		if (ScriptStruct != SerializedScriptStruct)
 		{
 			InitializeAs(SerializedScriptStruct);
@@ -202,17 +202,17 @@ bool FVariadicStruct::Serialize(FArchive& Ar)
 		int32 SerialSize = 0;
 		Ar << SerialSize;
 
-		//Check if the type is not missed.
+		// Check if the type is not missed.
 		if (!ScriptStruct && SerialSize > 0)
 		{
-			//Step over missing data.
+			// Step over missing data.
 			Ar.Seek(Ar.Tell() + SerialSize);
 
 			UE_LOG(LogCore, Warning, TEXT("FVariadicStruct: Failed to serialize UScriptStruct with SerialSize: %u, SerializedProperty: %s, LinkerRoot: %s."),
 				   SerialSize, *GetPathNameSafe(Ar.GetSerializedProperty()), Ar.GetLinker() ? *GetPathNameSafe(Ar.GetLinker()->LinkerRoot) : TEXT("NoLinker"));
 		}
 
-		//Serialize the actual value.
+		// Serialize the actual value.
 		if (uint8* const MemPtr = GetMutableMemory(); ScriptStruct && ensureAlways(MemPtr))
 		{
 			ConstCast(ScriptStruct)->SerializeItem(Ar, MemPtr, /* Defaults */ nullptr);
@@ -224,8 +224,8 @@ bool FVariadicStruct::Serialize(FArchive& Ar)
 		const UUserDefinedStruct* const UserDefinedStruct = Cast<UUserDefinedStruct>(ScriptStruct);
 		if (UserDefinedStruct && UserDefinedStruct->Status == EUserDefinedStructureStatus::UDSS_Duplicate && UserDefinedStruct->PrimaryStruct.IsValid())
 		{
-			//If saving a duplicated UDS, save the primary type instead, so that the data is loaded with the original struct.
-			//This is used as part of the user defined struct reinstancing logic.
+			// If saving a duplicated UDS, save the primary type instead, so that the data is loaded with the original struct.
+			// This is used as part of the user defined struct reinstancing logic.
 			UUserDefinedStruct* PrimaryUserDefinedStruct = UserDefinedStruct->PrimaryStruct.Get();
 			Ar << PrimaryUserDefinedStruct;
 		}
@@ -235,36 +235,36 @@ bool FVariadicStruct::Serialize(FArchive& Ar)
 			Ar << ScriptStruct;
 		}
 
-		//Reserve the buffer for SerialSize.
+		// Reserve the buffer for SerialSize.
 		const int64 SizeOffset = Ar.Tell();
 		int32 SerialSize = 0;
 		Ar << SerialSize;
 
 		const int64 InitialOffset = Ar.Tell();
 
-		//Serialize the actual value.
+		// Serialize the actual value.
 		if (uint8* const MemPtr = GetMutableMemory(); ScriptStruct && ensureAlways(MemPtr))
 		{
 			ConstCast(ScriptStruct)->SerializeItem(Ar, MemPtr, /* Defaults */ nullptr);
 		}
 
-		//Calculate the total serialized size.
+		// Calculate the total serialized size.
 		const int64 FinalOffset = Ar.Tell();
 		SerialSize = IntCastChecked<int32>(FinalOffset - InitialOffset);
 
-		//Write it to the reserved buffer.
+		// Write it to the reserved buffer.
 		Ar.Seek(SizeOffset);
 		Ar << SerialSize;
 
-		//Restore the offset for further serialization.
+		// Restore the offset for further serialization.
 		Ar.Seek(FinalOffset);
 	}
 	else if (Ar.IsCountingMemory() || Ar.IsModifyingWeakAndStrongReferences() || Ar.IsObjectReferenceCollector())
 	{
-		//Report type
+		// Report type
 		Ar << ScriptStruct;
 
-		//Report value
+		// Report value
 		if (uint8* const MemPtr = GetMutableMemory(); ScriptStruct && ensureAlways(MemPtr))
 		{
 			ConstCast(ScriptStruct)->SerializeItem(Ar, MemPtr, /* Defaults */ nullptr);
@@ -280,7 +280,7 @@ bool FVariadicStruct::ExportTextItem(FString& ValueStr, const FVariadicStruct& D
 	{
 		ValueStr += ScriptStruct->GetPathName();
 
-		//Force the default to nullptr to disable delta serialization because we reset the memory in import text.
+		// Force the default to nullptr to disable delta serialization because we reset the memory in import text.
 		ScriptStruct->ExportText(ValueStr, MemPtr, nullptr, Parent, PortFlags, ExportRootScope);
 	}
 	else
@@ -295,7 +295,7 @@ bool FVariadicStruct::ImportTextItem(const TCHAR*& Buffer, int32 PortFlags, UObj
 {
 	FNameBuilder StructPathName;
 
-	//UHT uses "()" as a general "empty struct" marker, so allow importing that as an alias for "None"
+	// UHT uses "()" as a general "empty struct" marker, so allow importing that as an alias for "None"
 	if (FCString::Strcmp(Buffer, TEXT("()")) == 0)
 	{
 		Buffer += 2;
@@ -316,7 +316,7 @@ bool FVariadicStruct::ImportTextItem(const TCHAR*& Buffer, int32 PortFlags, UObj
 	else
 	{
 		{
-			//Redirect the struct name if required.
+			// Redirect the struct name if required.
 			const FCoreRedirectObjectName OldName = FCoreRedirectObjectName(StructPathName.ToString());
 			const FCoreRedirectObjectName NewName = FCoreRedirects::GetRedirectedName(ECoreRedirectFlags::Type_Struct, OldName, ECoreRedirectMatchFlags::AllowPartialMatch);
 
@@ -327,8 +327,8 @@ bool FVariadicStruct::ImportTextItem(const TCHAR*& Buffer, int32 PortFlags, UObj
 			}
 		}
 
-		//Make sure the struct is actually loaded before trying to import the text (this boils down to FindObject if the struct is already loaded).
-		//This is needed for user defined structs, BP pin values, config, copy/paste, where there's no guarantee that the referenced struct has actually been loaded yet.
+		// Make sure the struct is actually loaded before trying to import the text (this boils down to FindObject if the struct is already loaded).
+		// This is needed for user defined structs, BP pin values, config, copy/paste, where there's no guarantee that the referenced struct has actually been loaded yet.
 		if (const UScriptStruct* const StructTypePtr = LoadObject<UScriptStruct>(nullptr, StructPathName.ToString()))
 		{
 			InitializeAs(StructTypePtr);
@@ -356,7 +356,7 @@ bool FVariadicStruct::SerializeFromMismatchedTag(const FPropertyTag& Tag, FStruc
 	constexpr FGuid InstancedStructGuid{ 0xE21E1CAA, 0xAF47425E, 0x89BF6AD4, 0x4C44A8BB };
 	static const FName NAME_InstancedStruct = "InstancedStruct";
 
-	//We should be fully serialization compatible with FInstancedStruct.
+	// We should be fully serialization compatible with FInstancedStruct.
 	if (Tag.GetType().IsStruct(NAME_InstancedStruct))
 	{
 		FArchive& Ar = Slot.GetUnderlyingArchive();
@@ -371,11 +371,11 @@ bool FVariadicStruct::SerializeFromMismatchedTag(const FPropertyTag& Tag, FStruc
 			return false;
 		}
 
-		//If the archive is very old.
+		// If the archive is very old.
 		if (Ar.CustomVer(InstancedStructGuid) < 0)
 		{
-			//The old format had "header+version" in editor builds, and just "version" otherwise.
-			//If the first thing we read is the old header, consume it, if not go back and assume that we have just the version.
+			// The old format had "header+version" in editor builds, and just "version" otherwise.
+			// If the first thing we read is the old header, consume it, if not go back and assume that we have just the version.
 			const int64 HeaderOffset = Ar.Tell();
 			uint32 Header = 0;
 			Ar << Header;
@@ -398,7 +398,7 @@ bool FVariadicStruct::SerializeFromMismatchedTag(const FPropertyTag& Tag, FStruc
 				Ar.Preload(SerializedScriptStruct);
 			}
 
-			//Initialize only if the type changes.
+			// Initialize only if the type changes.
 			if (ScriptStruct != SerializedScriptStruct)
 			{
 				InitializeAs(SerializedScriptStruct);
@@ -407,17 +407,17 @@ bool FVariadicStruct::SerializeFromMismatchedTag(const FPropertyTag& Tag, FStruc
 			int32 SerialSize = 0;
 			Ar << SerialSize;
 
-			//Check if the type is not missed.
+			// Check if the type is not missed.
 			if (!ScriptStruct && SerialSize > 0)
 			{
-				//Step over missing data.
+				// Step over missing data.
 				Ar.Seek(Ar.Tell() + SerialSize);
 
 				UE_LOG(LogCore, Warning, TEXT("FVariadicStruct: Failed to serialize UScriptStruct with SerialSize: %u, SerializedProperty: %s, LinkerRoot: %s."),
 					   SerialSize, *GetPathNameSafe(Ar.GetSerializedProperty()), Ar.GetLinker() ? *GetPathNameSafe(Ar.GetLinker()->LinkerRoot) : TEXT("NoLinker"));
 			}
 
-			//Serialize the actual value.
+			// Serialize the actual value.
 			if (uint8* const MemPtr = GetMutableMemory(); ScriptStruct && ensureAlways(MemPtr))
 			{
 				ConstCast(ScriptStruct)->SerializeItem(Ar, MemPtr, /* Defaults */ nullptr);
@@ -436,13 +436,13 @@ void FVariadicStruct::GetPreloadDependencies(TArray<UObject*>& OutDeps)
 	{
 		OutDeps.Add(ConstCast(ScriptStruct));
 
-		//Report direct dependencies.
+		// Report direct dependencies.
 		if (UScriptStruct::ICppStructOps* const CppStructOps = ScriptStruct->GetCppStructOps())
 		{
 			CppStructOps->GetPreloadDependencies(MemPtr, OutDeps);
 		}
 
-		//Recursively report indirect dependencies.
+		// Recursively report indirect dependencies.
 		for (TPropertyValueIterator<FStructProperty> It(ScriptStruct, MemPtr); It; ++It)
 		{
 			const UScriptStruct* StructType = It.Key()->Struct;
@@ -469,15 +469,15 @@ bool FVariadicStruct::Identical(const FVariadicStruct* Other, uint32 PortFlags) 
 void FVariadicStruct::AddStructReferencedObjects(FReferenceCollector& Collector)
 {
 #if WITH_ENGINE && WITH_EDITOR
-	//Reference collector is used to visit all instances of instanced structs and replace their contents.
+	// Reference collector is used to visit all instances of instanced structs and replace their contents.
 	if (const UUserDefinedStruct* StructureToReinstance = UE::StructUtils::Private::GetStructureToReinstance())
 	{
 		if (const UUserDefinedStruct* UserDefinedStruct = Cast<UUserDefinedStruct>(ScriptStruct))
 		{
 			if (StructureToReinstance->Status == EUserDefinedStructureStatus::UDSS_Duplicate)
 			{
-				// On the first pass we replace the UDS with a duplicate that represents the currently allocated struct.
-				// GStructureToReinstance is the duplicated struct, and StructureToReinstance->PrimaryStruct is the UDS that is being reinstanced.
+				//  On the first pass we replace the UDS with a duplicate that represents the currently allocated struct.
+				//  GStructureToReinstance is the duplicated struct, and StructureToReinstance->PrimaryStruct is the UDS that is being reinstanced.
 
 				if (UserDefinedStruct == StructureToReinstance->PrimaryStruct)
 				{
@@ -486,9 +486,9 @@ void FVariadicStruct::AddStructReferencedObjects(FReferenceCollector& Collector)
 			}
 			else
 			{
-				// On the second pass we reinstantiate the data using serialization.
-				// When saving, the UDSs are written using the duplicate which represents current layout, but PrimaryStruct is serialized as the type.
-				// When reading, the data is initialized with the new type, and the serialization will take care of reading from the old data.
+				//  On the second pass we reinstantiate the data using serialization.
+				//  When saving, the UDSs are written using the duplicate which represents current layout, but PrimaryStruct is serialized as the type.
+				//  When reading, the data is initialized with the new type, and the serialization will take care of reading from the old data.
 
 				if (UserDefinedStruct->PrimaryStruct == StructureToReinstance)
 				{
@@ -536,7 +536,7 @@ bool FVariadicStruct::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuc
 
 	if (!bIsValid)
 	{
-		//Reset the existing struct.
+		// Reset the existing struct.
 		if (Ar.IsLoading())
 		{
 			Reset();
@@ -544,7 +544,7 @@ bool FVariadicStruct::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuc
 	}
 	else
 	{
-		//Serialize UScripStruct.
+		// Serialize UScripStruct.
 		if (Ar.IsSaving())
 		{
 			Ar << ScriptStruct;
@@ -554,7 +554,7 @@ bool FVariadicStruct::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuc
 			UScriptStruct* SerializedScriptStruct = nullptr;
 			Ar << SerializedScriptStruct;
 
-			//Initialize only if the type changes.
+			// Initialize only if the type changes.
 			if (ScriptStruct != SerializedScriptStruct)
 			{
 				InitializeAs(SerializedScriptStruct);
@@ -568,7 +568,7 @@ bool FVariadicStruct::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuc
 			}
 		}
 
-		//Serialize the actual value. 
+		// Serialize the actual value. 
 		if (uint8* const Memory = GetMutableMemory(); ScriptStruct && ensureAlways(Memory))
 		{
 			if (ScriptStruct->StructFlags & STRUCT_NetSerializeNative)
@@ -595,11 +595,11 @@ bool FVariadicStruct::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuc
 
 	return true;
 
-#else // WITH_ENGINE
+#else //  WITH_ENGINE
 
-	return false; //The implementation above relies on types in the Engine module, so it can't be compiled without the engine.
+	return false; // The implementation above relies on types in the Engine module, so it can't be compiled without the engine.
 
-#endif // WITH_ENGINE
+#endif //  WITH_ENGINE
 }
 
 bool FVariadicStruct::FindInnerPropertyInstance(FName PropertyName, const FProperty*& OutProp, const void*& OutData) const

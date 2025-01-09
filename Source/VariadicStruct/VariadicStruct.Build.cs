@@ -17,13 +17,13 @@ namespace UnrealBuildTool.Rules
 				}
 			);
 
-			//Compile out Engine dependent code, like NetSerialize(), using #if WITH_ENGINE.
+			// Compile out Engine dependent code, like NetSerialize(), using #if WITH_ENGINE.
 			if (Target.bCompileAgainstEngine)
 			{
 				PrivateDependencyModuleNames.Add("Engine");
 			}
 
-			//I don't know what it is for...
+			// I don't know what it is for...
 			bAllowAutoRTFMInstrumentation = true;
 		}
 	}

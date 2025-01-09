@@ -5,30 +5,38 @@
 #include "Misc/AutomationTest.h"
 #include "VariadicStruct.h"
 
-#include "Math/IntPoint.h"	//sizeof()  < BUFFER_SIZE
-#include "Math/Vector.h"	//sizeof() == BUFFER_SIZE
-#include "Math/Transform.h"	//sizeof()  > BUFFER_SIZE
-#include "Math/Plane.h"		//Different Base Class
+#include "Math/IntPoint.h"	// sizeof()  < BUFFER_SIZE
+#include "Math/Vector.h"	// sizeof() == BUFFER_SIZE
+#include "Math/Transform.h"	// sizeof()  > BUFFER_SIZE
+#include "Math/Plane.h"		// Different Base Class
+
+consteval void FVariadicStructValidateTestInvariants()
+{
+	static_assert(sizeof(FIntPoint) < FVariadicStruct::BUFFER_SIZE, "FVariadicStruct: Missing test case for structures < BUFFER_SIZE.");
+	static_assert(sizeof(FVector) == FVariadicStruct::BUFFER_SIZE, "FVariadicStruct: Missing test case for structures == BUFFER_SIZE.");
+	static_assert(sizeof(FTransform) > FVariadicStruct::BUFFER_SIZE, "FVariadicStruct: Missing test case for structures > BUFFER_SIZE.");
+	static_assert(std::derived_from<FPlane, FVector>, "FVariadicStruct: Missing test case for polymorphic base class.");
+}
 
 /**
  * Investigate Low-Level Tests. https://dev.epicgames.com/documentation/en-us/unreal-engine/low-level-tests-in-unreal-engine
  */
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVariadicStructConstructorTest, "System.StructUtils.VariadicStruct",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVariadicStructTest, "Plugins.VariadicStruct",
 								 EAutomationTestFlags::EditorContext |
 								 EAutomationTestFlags::ClientContext |
 								 EAutomationTestFlags::SmokeFilter);
 
-bool FVariadicStructConstructorTest::RunTest(const FString&)
+bool FVariadicStructTest::RunTest(const FString&)
 {
 	FVariadicStruct Variadic;
 	UTEST_INVALID_EXPR(Variadic);
 
-	auto ValidateType = [this]<typename T>(T DefaultValue)
+	auto ValidateType = [this](const auto DefaultValue)
 		{
-			using Type = std::remove_cvref_t<T>;
+			using Type = std::remove_cvref_t<decltype(DefaultValue)>;
 
-			//InitializeAs<T>().
+			// InitializeAs<T>().
 			FVariadicStruct Variadic = FVariadicStruct::Make(DefaultValue);
 			UTEST_VALID_EXPR(Variadic);
 			UTEST_NOT_NULL_EXPR(Variadic.GetValuePtr<Type>());
@@ -36,8 +44,8 @@ bool FVariadicStructConstructorTest::RunTest(const FString&)
 			UTEST_EQUAL_EXPR(Variadic.GetValue<Type>(), DefaultValue);
 			UTEST_EQUAL_EXPR(Variadic.GetMutableValue<Type>(), DefaultValue);
 
-			//InitializeAs(UScriptStruct, uint8*).
-			FVariadicStruct ScriptVariadic = FVariadicStruct::Make(TBaseStructure<Type>::Get(), Variadic.GetMutableMemory());
+			// InitializeAs(UScriptStruct, uint8*).
+			FVariadicStruct ScriptVariadic = FVariadicStruct::Make(Variadic.GetScriptStruct(), Variadic.GetMutableMemory());
 			UTEST_VALID_EXPR(Variadic);
 			UTEST_NOT_NULL_EXPR(Variadic.GetValuePtr<Type>());
 			UTEST_NOT_NULL_EXPR(Variadic.GetMutableValuePtr<Type>());
@@ -66,7 +74,7 @@ bool FVariadicStructConstructorTest::RunTest(const FString&)
 	UTEST_TRUE_EXPR(ValidateType(VectorTemplate));
 	UTEST_TRUE_EXPR(ValidateType(TransformTemplate));
 
-	//Construct FPlane, but read FVector.
+	// Construct FPlane, but read FVector.
 	FVariadicStruct BaseVariadic = FVariadicStruct::Make<FPlane>(VectorTemplate);
 	UTEST_NOT_NULL_EXPR(BaseVariadic.GetValuePtr<FVector>());
 	UTEST_NOT_NULL_EXPR(BaseVariadic.GetMutableValuePtr<FVector>());
@@ -76,4 +84,4 @@ bool FVariadicStructConstructorTest::RunTest(const FString&)
 	return true;
 }
 
-#endif //WITH_TESTS
+#endif // WITH_DEV_AUTOMATION_TESTS
