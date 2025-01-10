@@ -23,7 +23,7 @@
 #include "Serialization/MemoryReader.h"
 #include "Serialization/ArchiveUObject.h"
 #include "Serialization/ObjectAndNameAsStringProxyArchive.h"
-#endif //  WITH_ENGINE
+#endif // WITH_ENGINE
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(VariadicStruct)
 
@@ -47,7 +47,7 @@ namespace
 		{
 			CustomVersionAdded = 0,
 
-			//  -----<new versions can be added above this line>-----
+			// -----<new versions can be added above this line>-----
 			VersionPlusOne,
 			LatestVersion = VersionPlusOne - 1
 		};
@@ -476,8 +476,8 @@ void FVariadicStruct::AddStructReferencedObjects(FReferenceCollector& Collector)
 		{
 			if (StructureToReinstance->Status == EUserDefinedStructureStatus::UDSS_Duplicate)
 			{
-				//  On the first pass we replace the UDS with a duplicate that represents the currently allocated struct.
-				//  GStructureToReinstance is the duplicated struct, and StructureToReinstance->PrimaryStruct is the UDS that is being reinstanced.
+				// On the first pass we replace the UDS with a duplicate that represents the currently allocated struct.
+				// GStructureToReinstance is the duplicated struct, and StructureToReinstance->PrimaryStruct is the UDS that is being reinstanced.
 
 				if (UserDefinedStruct == StructureToReinstance->PrimaryStruct)
 				{
@@ -486,9 +486,9 @@ void FVariadicStruct::AddStructReferencedObjects(FReferenceCollector& Collector)
 			}
 			else
 			{
-				//  On the second pass we reinstantiate the data using serialization.
-				//  When saving, the UDSs are written using the duplicate which represents current layout, but PrimaryStruct is serialized as the type.
-				//  When reading, the data is initialized with the new type, and the serialization will take care of reading from the old data.
+				// On the second pass we reinstantiate the data using serialization.
+				// When saving, the UDSs are written using the duplicate which represents current layout, but PrimaryStruct is serialized as the type.
+				// When reading, the data is initialized with the new type, and the serialization will take care of reading from the old data.
 
 				if (UserDefinedStruct->PrimaryStruct == StructureToReinstance)
 				{
@@ -595,11 +595,11 @@ bool FVariadicStruct::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuc
 
 	return true;
 
-#else //  WITH_ENGINE
+#else // WITH_ENGINE
 
 	return false; // The implementation above relies on types in the Engine module, so it can't be compiled without the engine.
 
-#endif //  WITH_ENGINE
+#endif // WITH_ENGINE
 }
 
 bool FVariadicStruct::FindInnerPropertyInstance(FName PropertyName, const FProperty*& OutProp, const void*& OutData) const
