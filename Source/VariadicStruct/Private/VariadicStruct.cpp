@@ -166,7 +166,7 @@ void FVariadicStruct::InitializeAs(const UScriptStruct* InScriptStruct, const ui
 
 void FVariadicStruct::Reset()
 {
-	if (uint8* const Memory = GetMutableMemory(); ScriptStruct && ensureAlways(Memory))
+	if (uint8* const Memory = GetMutableMemory())
 	{
 		ScriptStruct->DestroyStruct(Memory);
 

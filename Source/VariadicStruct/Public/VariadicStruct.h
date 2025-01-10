@@ -33,7 +33,8 @@ namespace VariadicStruct
 {
 	/** Supported template type parameters for FVariadicStruct. */
 	template<typename T>
-	concept CSupportedType = std::is_class_v<T> && not std::is_const_v<T> // Otherwise, public API may eventually lead to UB due to type erasure.
+	concept CSupportedType = std::is_class_v<T>
+		&& not std::is_const_v<T> // Otherwise, public API may eventually lead to UB due to type erasure.
 		&& not std::derived_from<T, FVariadicStruct>
 		&& not std::derived_from<T, FInstancedStruct>
 		&& not std::derived_from<T, FSharedStruct>
@@ -42,6 +43,13 @@ namespace VariadicStruct
 	{
 		{ TBaseStructure<T>::Get() } -> std::convertible_to<UScriptStruct*>;
 	};
+	
+	/** Type-converts the value at an existing memory location. */
+	template<typename T> requires CSupportedType<std::remove_const_t<T>>
+	T* GetTypePtr(std::conditional_t<std::is_const_v<T>, const uint8*, uint8*> Memory)
+	{
+		return std::launder(reinterpret_cast<T*>(Memory));
+	}
 
 	/** Returns FStructView from a generic type value. */
 	template<typename T> requires(not std::derived_from<FStructView>)
@@ -60,14 +68,14 @@ namespace VariadicStruct
 
 /**
  * Implementation of FInstancedStruct with SBO (Small Buffer Optimization) with default buffer size of 24 bytes.
- * Particularly useful when the expected types rarely exceed the buffer size, like FVector or optional payload.
- * Serialization compatible with FInstancedStruct.
+ * Particularly useful when the expected types rarely exceed the buffer size, such as optional payload data.
+ * Serialization compatible (non-commutative) with FInstancedStruct.
  * 
  * FVariadicStruct has some key differences from FInstancedStruct that should be taken into account:
- * 1. By default, requires 32 bytes instead of 16 and 16-byte alignment instead of 8.
+ * 1. Requires 32 bytes instead of 16 and 16-byte alignment instead of 8.
  * 2. Requires extra steps to access the data including 1 branching and 1 indirection if the type doesn't match.
  * 3. Move constructor and move assignment operator require a copy constructor for types that fit into the buffer.
- * 4. Not exposed to the Editor and BP as it doesn't make much sense.
+ * 4. Similar to FInstancedStructContainer, not exposed to the Editor and BP as it doesn't make much sense.
  * 
  * @Note: FInstancedStructContainer might still be more preferable for contiguous heterogeneous data.
  */
@@ -104,7 +112,7 @@ public:
 		if (InScriptStruct == ScriptStruct)
 		{
 			// We can reuse the same memory.
-			MemoryPtr = GetMutableTypeMemory<T>();
+			MemoryPtr = TypeRequiresMemoryAllocation<T>() ? StructMemory : StructBuffer;
 
 			// Destroy the existing struct directly.
 			std::destroy_at(std::launder(reinterpret_cast<T*>(MemoryPtr)));
@@ -178,11 +186,11 @@ public: // Data Access
 		// Use faster path if the type matches.
 		if (const UScriptStruct* const BaseStructure = TBaseStructure<T>::Get(); ScriptStruct == BaseStructure)
 		{
-			return std::launder(reinterpret_cast<const T*>(GetTypeMemory<T>()));
+			return VariadicStruct::GetTypePtr<const T>(GetTypeMemory<T>());
 		}
 		else if (!bExactType && ScriptStruct && ScriptStruct->IsChildOf(BaseStructure))
 		{
-			return std::launder(reinterpret_cast<const T*>(GetMemory()));
+			return VariadicStruct::GetTypePtr<const T>(GetMemory());
 		}
 
 		return nullptr;
@@ -192,16 +200,24 @@ public: // Data Access
 	template<VariadicStruct::CSupportedType T, bool bExactType = false>
 	[[nodiscard]] const T& GetValue() const
 	{
-		// Use faster path if the type matches.
-		if (const UScriptStruct* const BaseStructure = TBaseStructure<T>::Get(); ScriptStruct == BaseStructure)
+		// bExactType can be used to avoid branching and assert unexpected types.
+		if constexpr (bExactType)
 		{
-			return *std::launder(reinterpret_cast<const T*>(GetTypeMemory<T>()));
+			check(ScriptStruct == TBaseStructure<T>::Get());
+			return *VariadicStruct::GetTypePtr<const T>(GetTypeMemory<T>());
 		}
 		else
 		{
-			// bExactType can be used to assert unexpected types.
-			check(!bExactType && ScriptStruct && ScriptStruct->IsChildOf(BaseStructure) && GetMemory());
-			return *std::launder(reinterpret_cast<const T*>(GetMemory()));
+			// Use faster path if the type matches.
+			if (const UScriptStruct* const BaseStructure = TBaseStructure<T>::Get(); ScriptStruct == BaseStructure)
+			{
+				return *VariadicStruct::GetTypePtr<const T>(GetTypeMemory<T>());
+			}
+			else
+			{
+				check(ScriptStruct && ScriptStruct->IsChildOf(BaseStructure) && GetMemory());
+				return *VariadicStruct::GetTypePtr<const T>(GetMemory());
+			}
 		}
 	}
 
@@ -212,11 +228,11 @@ public: // Data Access
 		// Use faster path if the type matches.
 		if (const UScriptStruct* const BaseStructure = TBaseStructure<T>::Get(); ScriptStruct == BaseStructure)
 		{
-			return std::launder(reinterpret_cast<T*>(GetMutableTypeMemory<T>()));
+			return VariadicStruct::GetTypePtr<T>(GetMutableTypeMemory<T>());
 		}
 		else if (!bExactType && ScriptStruct && ScriptStruct->IsChildOf(BaseStructure))
 		{
-			return std::launder(reinterpret_cast<T*>(GetMutableMemory()));
+			return VariadicStruct::GetTypePtr<T>(GetMutableMemory());
 		}
 
 		return nullptr;
@@ -226,16 +242,24 @@ public: // Data Access
 	template<VariadicStruct::CSupportedType T, bool bExactType = false>
 	[[nodiscard]] T& GetMutableValue()
 	{
-		// Use faster path if the type matches.
-		if (const UScriptStruct* const BaseStructure = TBaseStructure<T>::Get(); ScriptStruct == BaseStructure)
+		// bExactType can be used to avoid branching and assert unexpected types.
+		if constexpr(bExactType)
 		{
-			return *std::launder(reinterpret_cast<T*>(GetMutableTypeMemory<T>()));
+			check(ScriptStruct == TBaseStructure<T>::Get());
+			return *VariadicStruct::GetTypePtr<T>(GetMutableTypeMemory<T>());
 		}
 		else
 		{
-			// bExactType can be used to assert unexpected types.
-			check(!bExactType && ScriptStruct && ScriptStruct->IsChildOf(BaseStructure) && GetMutableMemory());
-			return *std::launder(reinterpret_cast<T*>(GetMutableMemory()));
+			// Use faster path if the type matches.
+			if (const UScriptStruct* const BaseStructure = TBaseStructure<T>::Get(); ScriptStruct == BaseStructure)
+			{
+				return *VariadicStruct::GetTypePtr<T>(GetMutableTypeMemory<T>());
+			}
+			else
+			{
+				check(ScriptStruct && ScriptStruct->IsChildOf(BaseStructure) && GetMutableMemory());
+				return *VariadicStruct::GetTypePtr<T>(GetMutableMemory());
+			}
 		}
 	}
 
@@ -290,7 +314,7 @@ public: // Utility
 	/** Destroy the underlying struct value. StructBuffer retains garbage. */
 	void Reset();
 
-public: // TypeTraits
+public: // StructOpsTypeTraits
 
 	// Mostly copy pasted from FInstancedStruct.
 	bool Serialize(FArchive& Ar);
@@ -307,11 +331,12 @@ protected:
 
 	void ResetStructData(const UScriptStruct* InScriptStruct = nullptr, uint8* InStructMemory = nullptr)
 	{
-		// This will also make StructMemory active in union.
+		// This will also formally make StructMemory active in union.
 		StructMemory = InStructMemory;
 		ScriptStruct = InScriptStruct;
 	}
 
+	/** Determines whether the type requires memory allocation. */
 	bool RequiresMemoryAllocation(const UScriptStruct* InScriptStruct) const
 	{
 		// We can skip the extra alignment check at runtime if the buffer is properly sized.
