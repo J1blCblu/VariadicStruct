@@ -115,7 +115,7 @@ public:
 			MemoryPtr = TypeRequiresMemoryAllocation<T>() ? StructMemory : StructBuffer;
 
 			// Destroy the existing struct directly.
-			std::destroy_at(std::launder(reinterpret_cast<T*>(MemoryPtr)));
+			std::destroy_at(VariadicStruct::GetTypePtr<T>(MemoryPtr));
 		}
 		else // If the type doesn't match.
 		{
