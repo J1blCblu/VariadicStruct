@@ -19,7 +19,7 @@ You should pay attention to how you assign a new structure value into the existi
 2. `Variadic.InitializeAs<FVector>(MyVector);` Copy constructs a new structure value using native constructor.
 3. `Variadic.GetMutableValue<FVector>() = MyVector;` Copies a new structure value into the existing value without reconstructing.
 
-## Specs
+## Benchmarks
 
 > The results are very **approximate** due to the superficiality of the tests performed under *Development* configuration.
 
