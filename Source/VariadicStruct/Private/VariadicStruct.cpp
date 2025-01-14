@@ -15,15 +15,19 @@
 #include "UObject/UObjectBaseUtility.h"
 
 #if WITH_ENGINE
-#include "Engine/PackageMapClient.h"
 #include "Engine/NetConnection.h"
-#include "Engine/UserDefinedStruct.h"
+#include "Engine/NetDriver.h"
+#include "Engine/PackageMapClient.h"
 #include "Net/RepLayout.h"
+#include "Templates/SharedPointer.h"
+#endif // WITH_ENGINE
+
+#if WITH_EDITOR
+#include "Engine/UserDefinedStruct.h"
 #include "Serialization/MemoryWriter.h"
 #include "Serialization/MemoryReader.h"
-#include "Serialization/ArchiveUObject.h"
 #include "Serialization/ObjectAndNameAsStringProxyArchive.h"
-#endif // WITH_ENGINE
+#endif //WITH_EDITOR
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(VariadicStruct)
 
@@ -125,7 +129,7 @@ FVariadicStruct& FVariadicStruct::operator=(FVariadicStruct&& InOther)
 void FVariadicStruct::InitializeAs(const UScriptStruct* InScriptStruct, const uint8* InStructMemory /* = nullptr */)
 {
 	// If the existing type is valid and matches.
-	if (ScriptStruct && InScriptStruct == ScriptStruct)
+	if (IsValid() && InScriptStruct == ScriptStruct)
 	{
 		// Copy properties if needed.
 		if (InStructMemory)
@@ -137,28 +141,29 @@ void FVariadicStruct::InitializeAs(const UScriptStruct* InScriptStruct, const ui
 			ScriptStruct->ClearScriptStruct(GetMutableMemory());
 		}
 	}
-	else // Invalid or mismatched type.
+	else
 	{
 		Reset();
 
 		// Construct a new struct if needed.
 		if ((ScriptStruct = InScriptStruct) != nullptr)
 		{
-			uint8* DestMemory = StructBuffer;
+			uint8* MemoryPtr = StructBuffer;
 			
 			// Allocate a new space if the buffer is too small.
 			if (RequiresMemoryAllocation(InScriptStruct))
 			{
-				DestMemory = StructMemory = static_cast<uint8*>(FMemory::Malloc(InScriptStruct->GetStructureSize(), InScriptStruct->GetMinAlignment()));
+				MemoryPtr = StructMemory = static_cast<uint8*>(FMemory::Malloc(InScriptStruct->GetStructureSize(), InScriptStruct->GetMinAlignment()));
+				checkSlow(MemoryPtr != nullptr);
 			}
 
 			// Default initialize.
-			ScriptStruct->InitializeStruct(DestMemory);
+			ScriptStruct->InitializeStruct(MemoryPtr);
 
 			// Copy properties if needed.
 			if (InStructMemory)
 			{
-				ScriptStruct->CopyScriptStruct(DestMemory, InStructMemory);
+				ScriptStruct->CopyScriptStruct(MemoryPtr, InStructMemory);
 			}
 		}
 	}
@@ -166,13 +171,13 @@ void FVariadicStruct::InitializeAs(const UScriptStruct* InScriptStruct, const ui
 
 void FVariadicStruct::Reset()
 {
-	if (uint8* const Memory = GetMutableMemory())
+	if (uint8* const MemoryPtr = GetMutableMemory())
 	{
-		ScriptStruct->DestroyStruct(Memory);
+		ScriptStruct->DestroyStruct(MemoryPtr);
 
 		if (RequiresMemoryAllocation(ScriptStruct))
 		{
-			FMemory::Free(Memory);
+			FMemory::Free(MemoryPtr);
 		}
 	}
 
@@ -213,9 +218,9 @@ bool FVariadicStruct::Serialize(FArchive& Ar)
 		}
 
 		// Serialize the actual value.
-		if (uint8* const MemPtr = GetMutableMemory(); ScriptStruct && ensureAlways(MemPtr))
+		if (uint8* const MemoryPtr = GetMutableMemory())
 		{
-			ConstCast(ScriptStruct)->SerializeItem(Ar, MemPtr, /* Defaults */ nullptr);
+			ConstCast(ScriptStruct)->SerializeItem(Ar, MemoryPtr, /* Defaults */ nullptr);
 		}
 	}
 	else if (Ar.IsSaving())
@@ -243,9 +248,9 @@ bool FVariadicStruct::Serialize(FArchive& Ar)
 		const int64 InitialOffset = Ar.Tell();
 
 		// Serialize the actual value.
-		if (uint8* const MemPtr = GetMutableMemory(); ScriptStruct && ensureAlways(MemPtr))
+		if (uint8* const MemoryPtr = GetMutableMemory())
 		{
-			ConstCast(ScriptStruct)->SerializeItem(Ar, MemPtr, /* Defaults */ nullptr);
+			ConstCast(ScriptStruct)->SerializeItem(Ar, MemoryPtr, /* Defaults */ nullptr);
 		}
 
 		// Calculate the total serialized size.
@@ -265,9 +270,9 @@ bool FVariadicStruct::Serialize(FArchive& Ar)
 		Ar << ScriptStruct;
 
 		// Report value
-		if (uint8* const MemPtr = GetMutableMemory(); ScriptStruct && ensureAlways(MemPtr))
+		if (uint8* const MemoryPtr = GetMutableMemory())
 		{
-			ConstCast(ScriptStruct)->SerializeItem(Ar, MemPtr, /* Defaults */ nullptr);
+			ConstCast(ScriptStruct)->SerializeItem(Ar, MemoryPtr, /* Defaults */ nullptr);
 		}
 	}
 
@@ -276,12 +281,10 @@ bool FVariadicStruct::Serialize(FArchive& Ar)
 
 bool FVariadicStruct::ExportTextItem(FString& ValueStr, const FVariadicStruct& DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope) const
 {
-	if (const uint8* const MemPtr = GetMemory(); ScriptStruct && ensureAlways(MemPtr))
+	if (const uint8* const MemoryPtr = GetMemory())
 	{
 		ValueStr += ScriptStruct->GetPathName();
-
-		// Force the default to nullptr to disable delta serialization because we reset the memory in import text.
-		ScriptStruct->ExportText(ValueStr, MemPtr, nullptr, Parent, PortFlags, ExportRootScope);
+		ScriptStruct->ExportText(ValueStr, MemoryPtr, MemoryPtr, Parent, PortFlags, ExportRootScope);
 	}
 	else
 	{
@@ -418,9 +421,9 @@ bool FVariadicStruct::SerializeFromMismatchedTag(const FPropertyTag& Tag, FStruc
 			}
 
 			// Serialize the actual value.
-			if (uint8* const MemPtr = GetMutableMemory(); ScriptStruct && ensureAlways(MemPtr))
+			if (IsValid())
 			{
-				ConstCast(ScriptStruct)->SerializeItem(Ar, MemPtr, /* Defaults */ nullptr);
+				ConstCast(ScriptStruct)->SerializeItem(Ar, GetMutableMemory(), /* Defaults */ nullptr);
 			}
 		}
 
@@ -432,18 +435,18 @@ bool FVariadicStruct::SerializeFromMismatchedTag(const FPropertyTag& Tag, FStruc
 
 void FVariadicStruct::GetPreloadDependencies(TArray<UObject*>& OutDeps)
 {
-	if (uint8* const MemPtr = GetMutableMemory(); ScriptStruct && ensureAlways(MemPtr))
+	if (uint8* const MemoryPtr = GetMutableMemory())
 	{
 		OutDeps.Add(ConstCast(ScriptStruct));
 
 		// Report direct dependencies.
 		if (UScriptStruct::ICppStructOps* const CppStructOps = ScriptStruct->GetCppStructOps())
 		{
-			CppStructOps->GetPreloadDependencies(MemPtr, OutDeps);
+			CppStructOps->GetPreloadDependencies(MemoryPtr, OutDeps);
 		}
 
 		// Recursively report indirect dependencies.
-		for (TPropertyValueIterator<FStructProperty> It(ScriptStruct, MemPtr); It; ++It)
+		for (TPropertyValueIterator<FStructProperty> It(ScriptStruct, MemoryPtr); It; ++It)
 		{
 			const UScriptStruct* StructType = It.Key()->Struct;
 
@@ -468,7 +471,7 @@ bool FVariadicStruct::Identical(const FVariadicStruct* Other, uint32 PortFlags) 
 
 void FVariadicStruct::AddStructReferencedObjects(FReferenceCollector& Collector)
 {
-#if WITH_ENGINE && WITH_EDITOR
+#if WITH_EDITOR
 	// Reference collector is used to visit all instances of instanced structs and replace their contents.
 	if (const UUserDefinedStruct* StructureToReinstance = UE::StructUtils::Private::GetStructureToReinstance())
 	{
@@ -515,10 +518,10 @@ void FVariadicStruct::AddStructReferencedObjects(FReferenceCollector& Collector)
 	}
 #endif
 
-	if (uint8* const MemPtr = GetMutableMemory(); ScriptStruct && ensureAlways(MemPtr))
+	if (uint8* const MemoryPtr = GetMutableMemory())
 	{
 		Collector.AddReferencedObject(ScriptStruct);
-		Collector.AddPropertyReferencesWithStructARO(ScriptStruct, MemPtr);
+		Collector.AddPropertyReferencesWithStructARO(ScriptStruct, MemoryPtr);
 	}
 }
 
@@ -560,7 +563,7 @@ bool FVariadicStruct::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuc
 				InitializeAs(SerializedScriptStruct);
 			}
 
-			if (!IsValid())
+			if (ScriptStruct == nullptr)
 			{
 				UE_LOG(LogCore, Error, TEXT("FVariadicStruct: Failed to NetSerialize UScriptStruct and recover the corrupted archive."));
 				bOutSuccess = false;
@@ -569,25 +572,21 @@ bool FVariadicStruct::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuc
 		}
 
 		// Serialize the actual value. 
-		if (uint8* const Memory = GetMutableMemory(); ScriptStruct && ensureAlways(Memory))
+		if (uint8* const MemoryPtr = GetMutableMemory())
 		{
 			if (ScriptStruct->StructFlags & STRUCT_NetSerializeNative)
 			{
-				ScriptStruct->GetCppStructOps()->NetSerialize(Ar, Map, bOutSuccess, Memory);
+				ScriptStruct->GetCppStructOps()->NetSerialize(Ar, Map, bOutSuccess, MemoryPtr);
 			}
 			else
 			{
-				UPackageMapClient* const MapClient = Cast<UPackageMapClient>(Map);
+				UNetConnection* const NetConnection = CastChecked<UPackageMapClient>(Map)->GetConnection();
 
-				if (ensureAlways(MapClient && MapClient->GetConnection() && MapClient->GetConnection()->GetDriver()))
+				if (ensureAlways(::IsValid(NetConnection) && ::IsValid(NetConnection->GetDriver())))
 				{
-					const TSharedPtr<FRepLayout> RepLayout = MapClient->GetConnection()->GetDriver()->GetStructRepLayout(ConstCast(ScriptStruct));
-
-					if (ensureAlways(RepLayout.IsValid()))
-					{
-						bool bHasUnmapped = false;
-						RepLayout->SerializePropertiesForStruct(ConstCast(ScriptStruct), static_cast<FBitArchive&>(Ar), Map, Memory, bHasUnmapped);
-					}
+					bool bHasUnmapped = false;
+					const TSharedRef<FRepLayout> RepLayout = NetConnection->GetDriver()->GetStructRepLayout(ConstCast(ScriptStruct)).ToSharedRef();
+					RepLayout->SerializePropertiesForStruct(ConstCast(ScriptStruct), static_cast<FBitArchive&>(Ar), Map, MemoryPtr, bHasUnmapped);
 				}
 			}
 		}
@@ -604,14 +603,14 @@ bool FVariadicStruct::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuc
 
 bool FVariadicStruct::FindInnerPropertyInstance(FName PropertyName, const FProperty*& OutProp, const void*& OutData) const
 {
-	if (const uint8* const MemPtr = GetMemory(); ScriptStruct && ensureAlways(MemPtr))
+	if (const uint8* const MemoryPtr = GetMemory())
 	{
 		for (const FProperty* const Prop : TFieldRange<FProperty>(ScriptStruct))
 		{
 			if (Prop->GetFName() == PropertyName)
 			{
 				OutProp = Prop;
-				OutData = MemPtr;
+				OutData = MemoryPtr;
 				return true;
 			}
 		}

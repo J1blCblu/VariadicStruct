@@ -15,7 +15,7 @@ consteval void FVariadicStructValidateTestInvariants()
 	static_assert(sizeof(FIntPoint) < FVariadicStruct::BUFFER_SIZE, "FVariadicStruct: Missing test case for structures < BUFFER_SIZE.");
 	static_assert(sizeof(FVector) == FVariadicStruct::BUFFER_SIZE, "FVariadicStruct: Missing test case for structures == BUFFER_SIZE.");
 	static_assert(sizeof(FTransform) > FVariadicStruct::BUFFER_SIZE, "FVariadicStruct: Missing test case for structures > BUFFER_SIZE.");
-	static_assert(std::derived_from<FPlane, FVector>, "FVariadicStruct: Missing test case for polymorphic base class.");
+	static_assert(std::derived_from<FPlane, FVector>, "FVariadicStruct: Missing test case for accessing base class.");
 }
 
 /**

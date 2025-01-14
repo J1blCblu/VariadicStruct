@@ -46,9 +46,10 @@ namespace VariadicStruct
 	
 	/** Type-converts the value at an existing memory location. */
 	template<typename T> requires CSupportedType<std::remove_const_t<T>>
-	T* GetTypePtr(std::conditional_t<std::is_const_v<T>, const uint8*, uint8*> Memory)
+	T* GetTypePtr(std::conditional_t<std::is_const_v<T>, const uint8*, uint8*> MemoryPtr)
 	{
-		return std::launder(reinterpret_cast<T*>(Memory));
+		// Formally, reinterpreting the non-standard_layout Derived* as Base* is UB.
+		return std::launder(reinterpret_cast<T*>(MemoryPtr));
 	}
 
 	/** Returns FStructView from a generic type value. */
@@ -105,21 +106,23 @@ public:
 	template<VariadicStruct::CSupportedType T, typename... TArgs>
 	T* InitializeAs(TArgs&&... InArgs)
 	{
-		const UScriptStruct* const InScriptStruct = TBaseStructure<T>::Get();
-		uint8* MemoryPtr = nullptr;
+		uint8* MemoryPtr = StructBuffer;
 
 		// If the existing type is valid and matches.
-		if (InScriptStruct == ScriptStruct)
+		if (const UScriptStruct* const InScriptStruct = TBaseStructure<T>::Get(); InScriptStruct == ScriptStruct)
 		{
 			// We can reuse the same memory.
-			MemoryPtr = TypeRequiresMemoryAllocation<T>() ? StructMemory : StructBuffer;
+			if constexpr (TypeRequiresMemoryAllocation<T>())
+			{
+				MemoryPtr = StructMemory;
+			}
 
 			// Destroy the existing struct directly.
 			std::destroy_at(VariadicStruct::GetTypePtr<T>(MemoryPtr));
 		}
-		else // If the type doesn't match.
+		else
 		{
-			Reset(); // Destroy the existing struct.
+			Reset();
 
 			ScriptStruct = InScriptStruct;
 
@@ -127,23 +130,12 @@ public:
 			if constexpr (TypeRequiresMemoryAllocation<T>())
 			{
 				MemoryPtr = StructMemory = static_cast<uint8*>(FMemory::Malloc(sizeof(T), alignof(T)));
-			}
-			else
-			{
-				MemoryPtr = StructBuffer;
+				checkSlow(MemoryPtr != nullptr);
 			}
 		}
 
 		// Return the value pointer avoiding std::launder() if the type is immediately used.
-		T* ResultPtr = nullptr;
-
-		// Finally, construct a new struct.
-		if (ensureAlways(MemoryPtr))
-		{
-			ResultPtr = new (MemoryPtr) T(Forward<TArgs>(InArgs)...);
-		}
-
-		return ResultPtr;
+		return new (MemoryPtr) T(Forward<TArgs>(InArgs)...);
 	}
 
 	/** Initializes from UScriptStruct type and copies the value if needed. */
@@ -201,23 +193,15 @@ public: // Data Access
 	[[nodiscard]] const T& GetValue() const
 	{
 		// bExactType can be used to avoid branching and assert unexpected types.
-		if constexpr (bExactType)
+		if (bExactType || TBaseStructure<T>::Get() == ScriptStruct)
 		{
-			check(ScriptStruct == TBaseStructure<T>::Get());
+			check(!bExactType || TBaseStructure<T>::Get() == ScriptStruct);
 			return *VariadicStruct::GetTypePtr<const T>(GetTypeMemory<T>());
 		}
 		else
 		{
-			// Use faster path if the type matches.
-			if (const UScriptStruct* const BaseStructure = TBaseStructure<T>::Get(); ScriptStruct == BaseStructure)
-			{
-				return *VariadicStruct::GetTypePtr<const T>(GetTypeMemory<T>());
-			}
-			else
-			{
-				check(ScriptStruct && ScriptStruct->IsChildOf(BaseStructure) && GetMemory());
-				return *VariadicStruct::GetTypePtr<const T>(GetMemory());
-			}
+			check(ScriptStruct && ScriptStruct->IsChildOf(TBaseStructure<T>::Get()));
+			return *VariadicStruct::GetTypePtr<const T>(GetMemory());
 		}
 	}
 
@@ -243,23 +227,15 @@ public: // Data Access
 	[[nodiscard]] T& GetMutableValue()
 	{
 		// bExactType can be used to avoid branching and assert unexpected types.
-		if constexpr(bExactType)
+		if (bExactType || TBaseStructure<T>::Get() == ScriptStruct)
 		{
-			check(ScriptStruct == TBaseStructure<T>::Get());
+			check(!bExactType || TBaseStructure<T>::Get() == ScriptStruct);
 			return *VariadicStruct::GetTypePtr<T>(GetMutableTypeMemory<T>());
 		}
 		else
 		{
-			// Use faster path if the type matches.
-			if (const UScriptStruct* const BaseStructure = TBaseStructure<T>::Get(); ScriptStruct == BaseStructure)
-			{
-				return *VariadicStruct::GetTypePtr<T>(GetMutableTypeMemory<T>());
-			}
-			else
-			{
-				check(ScriptStruct && ScriptStruct->IsChildOf(BaseStructure) && GetMutableMemory());
-				return *VariadicStruct::GetTypePtr<T>(GetMutableMemory());
-			}
+			check(ScriptStruct && ScriptStruct->IsChildOf(TBaseStructure<T>::Get()));
+			return *VariadicStruct::GetTypePtr<T>(GetMutableMemory());
 		}
 	}
 
@@ -268,7 +244,7 @@ public: // Utility
 	/** Whether FVariadicStruct wraps any struct value. */
 	bool IsValid() const
 	{
-		return GetScriptStruct() && ensureAlways(GetMemory());
+		return GetScriptStruct() != nullptr;
 	}
 
 	/** Returns UScriptStruct of the underlying struct. */
@@ -280,23 +256,13 @@ public: // Utility
 	/** Returns a const pointer to the underlying struct memory. */
 	const uint8* GetMemory() const
 	{
-		if (ScriptStruct && !RequiresMemoryAllocation(ScriptStruct))
-		{
-			return StructBuffer;
-		}
-
-		return StructMemory;
+		return ScriptStruct && !RequiresMemoryAllocation(ScriptStruct) ? StructBuffer : StructMemory;
 	}
 
 	/** Returns a mutable pointer to the underlying struct memory. */
 	uint8* GetMutableMemory()
 	{
-		if (ScriptStruct && !RequiresMemoryAllocation(ScriptStruct))
-		{
-			return StructBuffer;
-		}
-
-		return StructMemory;
+		return ScriptStruct && !RequiresMemoryAllocation(ScriptStruct) ? StructBuffer : StructMemory;
 	}
 
 	/** Deep compares the struct instance when identical. */
