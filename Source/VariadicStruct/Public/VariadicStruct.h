@@ -2,12 +2,8 @@
 
 #pragma once
 
-#include <concepts>
-#include <memory> // std::destroy_at/construct_at
-#include <new> // std::launder
-
-#include "CoreTypes.h"
 #include "Containers/Array.h"
+#include "CoreTypes.h"
 #include "HAL/UnrealMemory.h"
 #include "Misc/AssertionMacros.h"
 #include "Serialization/StructuredArchive.h"
@@ -16,6 +12,10 @@
 #include "UObject/NameTypes.h"
 #include "UObject/ObjectPtr.h"
 #include "UObject/PropertyPortFlags.h"
+
+#include <concepts>
+#include <memory> // std::destroy_at
+#include <new>	  // std::launder
 
 #include "VariadicStruct.generated.h"
 
@@ -43,9 +43,9 @@ namespace VariadicStruct
 	{
 		{ TBaseStructure<T>::Get() } -> std::convertible_to<UScriptStruct*>;
 	};
-	
+
 	/** Type-converts the value at an existing memory location. */
-	template<typename T> requires CSupportedType<std::remove_const_t<T>>
+	template<typename T> requires(CSupportedType<std::remove_const_t<T>>)
 	T* GetTypePtr(std::conditional_t<std::is_const_v<T>, const uint8*, uint8*> MemoryPtr)
 	{
 		// Formally, reinterpreting the non-standard_layout Derived* as Base* is UB.
@@ -71,13 +71,13 @@ namespace VariadicStruct
  * Implementation of FInstancedStruct with SBO (Small Buffer Optimization) with default buffer size of 24 bytes.
  * Particularly useful when the expected types rarely exceed the buffer size, such as optional payload data.
  * Serialization compatible (non-commutative) with FInstancedStruct.
- * 
+ *
  * FVariadicStruct has some key differences from FInstancedStruct that should be taken into account:
  * 1. Requires 32 bytes instead of 16 and 16-byte alignment instead of 8.
  * 2. Requires extra steps to access the data including 1 branching and 1 indirection if the type doesn't match.
  * 3. Move constructor and move assignment operator require a copy constructor for types that fit into the buffer.
  * 4. Similar to FInstancedStructContainer, not exposed to the Editor and BP as it doesn't make much sense.
- * 
+ *
  * @Note: FInstancedStructContainer might still be more preferable for contiguous heterogeneous data.
  */
 USTRUCT()
@@ -144,7 +144,7 @@ public:
 public: // Factories
 
 	/** Copy/move constructs a new FVariadicStruct from a template struct. */
-	template<typename T> requires VariadicStruct::CSupportedType<std::remove_cvref_t<T>>
+	template<typename T> requires(VariadicStruct::CSupportedType<std::remove_cvref_t<T>>)
 	[[nodiscard]] static FVariadicStruct Make(T&& InStruct)
 	{
 		FVariadicStruct Variadic;
@@ -348,10 +348,10 @@ private:
 	union
 	{
 		/** Pointer to the heap for large structs. */
-		 uint8* StructMemory = nullptr;
+		uint8* StructMemory = nullptr;
 
 		/** Inline memory buffer for small structs. */
-		 uint8 StructBuffer[BUFFER_SIZE];
+		uint8 StructBuffer[BUFFER_SIZE];
 	};
 
 	/** UScriptStruct type of the underlying struct value. */

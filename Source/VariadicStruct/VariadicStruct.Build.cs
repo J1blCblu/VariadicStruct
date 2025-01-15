@@ -6,10 +6,10 @@ namespace UnrealBuildTool.Rules
 	{
 		public VariadicStruct(ReadOnlyTargetRules Target) : base(Target)
 		{
-            DefaultBuildSettings = BuildSettingsVersion.V5;
-            IWYUSupport = IWYUSupport.Full;
+			DefaultBuildSettings = BuildSettingsVersion.V5;
+			IWYUSupport = IWYUSupport.Full;
 
-            PublicDependencyModuleNames.AddRange(
+			PublicDependencyModuleNames.AddRange(
 				new string[] {
 					"Core",
 					"CoreUObject",

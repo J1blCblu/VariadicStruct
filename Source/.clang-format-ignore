@@ -1,0 +1,5 @@
+# Temporary, until VS2022 is consistent with clang-format and c++20 features
+./**
+
+# Don't format .build.cs
+./**/*.build.cs

@@ -27,7 +27,7 @@
 #include "Serialization/MemoryWriter.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/ObjectAndNameAsStringProxyArchive.h"
-#endif //WITH_EDITOR
+#endif // WITH_EDITOR
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(VariadicStruct)
 
@@ -36,7 +36,7 @@ consteval void FVariadicStructValidateInvariants()
 	// The following requirements needs to be met in order to avoid using std::align() to access the underlying structure memory.
 	static_assert(sizeof(FVariadicStruct::ScriptStruct) == 8 && alignof(FVariadicStruct) >= 8 && FVariadicStruct::BUFFER_SIZE >= alignof(FVariadicStruct));
 	static_assert(std::is_standard_layout_v<FVariadicStruct> && offsetof(FVariadicStruct, StructBuffer) == 0, "FVariadicStruct::StructBuffer needs to be the first member property.");
-	static_assert((FVariadicStruct::BUFFER_SIZE - sizeof(FVariadicStruct::ScriptStruct)) % alignof(FVariadicStruct) == 0 , "FVariadicStruct needs to be effectively sized.");
+	static_assert((FVariadicStruct::BUFFER_SIZE - sizeof(FVariadicStruct::ScriptStruct)) % alignof(FVariadicStruct) == 0, "FVariadicStruct needs to be effectively sized.");
 }
 
 namespace
@@ -149,7 +149,7 @@ void FVariadicStruct::InitializeAs(const UScriptStruct* InScriptStruct, const ui
 		if ((ScriptStruct = InScriptStruct) != nullptr)
 		{
 			uint8* MemoryPtr = StructBuffer;
-			
+
 			// Allocate a new space if the buffer is too small.
 			if (RequiresMemoryAllocation(InScriptStruct))
 			{
@@ -303,7 +303,7 @@ bool FVariadicStruct::ImportTextItem(const TCHAR*& Buffer, int32 PortFlags, UObj
 	{
 		Buffer += 2;
 	}
-	else if (const TCHAR* const Result = FPropertyHelpers::ReadToken(Buffer, StructPathName, /* bDottedNames */true))
+	else if (const TCHAR* const Result = FPropertyHelpers::ReadToken(Buffer, StructPathName, /* bDottedNames */ true))
 	{
 		Buffer = Result;
 	}
@@ -571,7 +571,7 @@ bool FVariadicStruct::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuc
 			}
 		}
 
-		// Serialize the actual value. 
+		// Serialize the actual value.
 		if (uint8* const MemoryPtr = GetMutableMemory())
 		{
 			if (ScriptStruct->StructFlags & STRUCT_NetSerializeNative)

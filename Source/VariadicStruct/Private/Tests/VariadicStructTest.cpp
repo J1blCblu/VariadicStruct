@@ -7,7 +7,7 @@
 
 #include "Math/IntPoint.h"	// sizeof()  < BUFFER_SIZE
 #include "Math/Vector.h"	// sizeof() == BUFFER_SIZE
-#include "Math/Transform.h"	// sizeof()  > BUFFER_SIZE
+#include "Math/Transform.h" // sizeof()  > BUFFER_SIZE
 #include "Math/Plane.h"		// Different Base Class
 
 consteval void FVariadicStructValidateTestInvariants()
@@ -22,10 +22,7 @@ consteval void FVariadicStructValidateTestInvariants()
  * Investigate Low-Level Tests. https://dev.epicgames.com/documentation/en-us/unreal-engine/low-level-tests-in-unreal-engine
  */
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVariadicStructTest, "Plugins.VariadicStruct",
-								 EAutomationTestFlags::EditorContext |
-								 EAutomationTestFlags::ClientContext |
-								 EAutomationTestFlags::SmokeFilter);
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVariadicStructTest, "Plugins.VariadicStruct", EAutomationTestFlags::EditorContext | EAutomationTestFlags::ClientContext | EAutomationTestFlags::SmokeFilter);
 
 bool FVariadicStructTest::RunTest(const FString&)
 {
