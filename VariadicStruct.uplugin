@@ -25,7 +25,8 @@
 	"Plugins": [
 		{
 			"Name": "StructUtils",
-			"Enabled": true
+			"Enabled": true,
+			"Optional": true
 		}
 	]
 }

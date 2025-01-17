@@ -28,6 +28,7 @@ bool FVariadicStructTest::RunTest(const FString&)
 {
 	FVariadicStruct Variadic;
 	UTEST_INVALID_EXPR(Variadic);
+	UTEST_FALSE_EXPR(Variadic.IsTypeOf<FVector>());
 
 	auto ValidateType = [this](const auto DefaultValue)
 		{
@@ -36,6 +37,7 @@ bool FVariadicStructTest::RunTest(const FString&)
 			// InitializeAs<T>().
 			FVariadicStruct Variadic = FVariadicStruct::Make(DefaultValue);
 			UTEST_VALID_EXPR(Variadic);
+			UTEST_TRUE_EXPR(Variadic.IsTypeOf<Type>());
 			UTEST_NOT_NULL_EXPR(Variadic.GetValuePtr<Type>());
 			UTEST_NOT_NULL_EXPR(Variadic.GetMutableValuePtr<Type>());
 			UTEST_EQUAL_EXPR(Variadic.GetValue<Type>(), DefaultValue);
@@ -44,6 +46,7 @@ bool FVariadicStructTest::RunTest(const FString&)
 			// InitializeAs(UScriptStruct, uint8*).
 			FVariadicStruct ScriptVariadic = FVariadicStruct::Make(Variadic.GetScriptStruct(), Variadic.GetMutableMemory());
 			UTEST_VALID_EXPR(Variadic);
+			UTEST_TRUE_EXPR(Variadic.IsTypeOf<Type>());
 			UTEST_NOT_NULL_EXPR(Variadic.GetValuePtr<Type>());
 			UTEST_NOT_NULL_EXPR(Variadic.GetMutableValuePtr<Type>());
 			UTEST_EQUAL_EXPR(Variadic.GetValue<Type>(), DefaultValue);

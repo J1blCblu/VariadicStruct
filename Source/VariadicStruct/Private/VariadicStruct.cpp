@@ -7,12 +7,14 @@
 #include "Logging/LogMacros.h"
 #include "Misc/CString.h"
 #include "Serialization/CustomVersion.h"
-#include "StructUtilsTypes.h"
 #include "UObject/CoreRedirects.h"
 #include "UObject/Linker.h"
 #include "UObject/Package.h"
 #include "UObject/UnrealType.h"
 #include "UObject/UObjectBaseUtility.h"
+#if !UE_VERSION_OLDER_THAN(5, 5, 0)
+#include "UObject/PropertyVisitor.h"
+#endif // UE_VERSION_OLDER_THAN
 
 #if WITH_ENGINE
 #include "Engine/NetConnection.h"
@@ -23,10 +25,16 @@
 #endif // WITH_ENGINE
 
 #if WITH_EDITOR
-#include "Engine/UserDefinedStruct.h"
 #include "Serialization/MemoryWriter.h"
 #include "Serialization/MemoryReader.h"
 #include "Serialization/ObjectAndNameAsStringProxyArchive.h"
+#if UE_VERSION_OLDER_THAN(5, 5, 0)
+#include "Engine/UserDefinedStruct.h"
+#include "StructUtilsTypes.h"
+#else
+#include "StructUtils/UserDefinedStruct.h"
+#include "StructUtils/StructUtilsTypes.h"
+#endif // UE_VERSION_OLDER_THAN
 #endif // WITH_EDITOR
 
 #include UE_INLINE_GENERATED_CPP_BY_NAME(VariadicStruct)
@@ -128,6 +136,8 @@ FVariadicStruct& FVariadicStruct::operator=(FVariadicStruct&& InOther)
 
 void FVariadicStruct::InitializeAs(const UScriptStruct* InScriptStruct, const uint8* InStructMemory /* = nullptr */)
 {
+	checkf(VariadicStruct::ValidateScriptStruct(InScriptStruct), TEXT("FVariadicStruct: Trying to init with unsupported UScriptStruct."));
+
 	// If the existing type is valid and matches.
 	if (IsValid() && InScriptStruct == ScriptStruct)
 	{
@@ -421,9 +431,9 @@ bool FVariadicStruct::SerializeFromMismatchedTag(const FPropertyTag& Tag, FStruc
 			}
 
 			// Serialize the actual value.
-			if (IsValid())
+			if (uint8* const MemoryPtr = GetMutableMemory())
 			{
-				ConstCast(ScriptStruct)->SerializeItem(Ar, GetMutableMemory(), /* Defaults */ nullptr);
+				ConstCast(ScriptStruct)->SerializeItem(Ar, MemoryPtr, /* Defaults */ nullptr);
 			}
 		}
 
@@ -472,8 +482,12 @@ bool FVariadicStruct::Identical(const FVariadicStruct* Other, uint32 PortFlags) 
 void FVariadicStruct::AddStructReferencedObjects(FReferenceCollector& Collector)
 {
 #if WITH_EDITOR
-	// Reference collector is used to visit all instances of instanced structs and replace their contents.
+	// Reference collector is used to visit all instances of instanced structs and replace their contents.	
+#if UE_VERSION_OLDER_THAN(5, 5, 0)
 	if (const UUserDefinedStruct* StructureToReinstance = UE::StructUtils::Private::GetStructureToReinstance())
+#else
+	if (const UUserDefinedStruct* StructureToReinstance = UE::StructUtils::Private::GetStructureToReinstantiate())
+#endif // UE_VERSION_OLDER_THAN
 	{
 		if (const UUserDefinedStruct* UserDefinedStruct = Cast<UUserDefinedStruct>(ScriptStruct))
 		{
@@ -495,7 +509,11 @@ void FVariadicStruct::AddStructReferencedObjects(FReferenceCollector& Collector)
 
 				if (UserDefinedStruct->PrimaryStruct == StructureToReinstance)
 				{
+#if UE_VERSION_OLDER_THAN(5, 5, 0)
 					if (UObject* const Outer = UE::StructUtils::Private::GetCurrentReinstanceOuterObject())
+#else
+					if (UObject* const Outer = UE::StructUtils::Private::GetCurrentReinstantiationOuterObject())
+#endif // UE_VERSION_OLDER_THAN
 					{
 						if (!Outer->IsA<UClass>() && !Outer->HasAnyFlags(RF_ClassDefaultObject))
 						{
@@ -516,7 +534,7 @@ void FVariadicStruct::AddStructReferencedObjects(FReferenceCollector& Collector)
 			}
 		}
 	}
-#endif
+#endif // WITH_EDITOR
 
 	if (uint8* const MemoryPtr = GetMutableMemory())
 	{
@@ -618,3 +636,27 @@ bool FVariadicStruct::FindInnerPropertyInstance(FName PropertyName, const FPrope
 
 	return false;
 }
+
+#if !UE_VERSION_OLDER_THAN(5, 5, 0)
+
+EPropertyVisitorControlFlow FVariadicStruct::Visit(FPropertyVisitorPath& Path, const FPropertyVisitorData& InData, const TFunctionRef<EPropertyVisitorControlFlow(const FPropertyVisitorPath& /*Path*/, const FPropertyVisitorData& /*Data*/)> InFunc) const
+{
+	if (uint8* const MemoryPtr = const_cast<uint8*>(GetMemory()))
+	{
+		return ScriptStruct->Visit(Path, InData.VisitPropertyData(MemoryPtr), InFunc);
+	}
+
+	return EPropertyVisitorControlFlow::StepOver;
+}
+
+void* FVariadicStruct::ResolveVisitedPathInfo(const FPropertyVisitorInfo& Info) const
+{
+	if (uint8* const MemoryPtr = const_cast<uint8*>(GetMemory()))
+	{
+		return ScriptStruct->ResolveVisitedPathInfo(MemoryPtr, Info);
+	}
+
+	return nullptr;
+}
+
+#endif // UE_VERSION_OLDER_THAN

@@ -6,12 +6,19 @@
 #include "CoreTypes.h"
 #include "HAL/UnrealMemory.h"
 #include "Misc/AssertionMacros.h"
+#include "Misc/EngineVersionComparison.h"
 #include "Serialization/StructuredArchive.h"
-#include "StructView.h"
 #include "UObject/Class.h"
 #include "UObject/NameTypes.h"
 #include "UObject/ObjectPtr.h"
 #include "UObject/PropertyPortFlags.h"
+
+#if UE_VERSION_OLDER_THAN(5, 5, 0)
+#include "StructView.h"
+#else
+#include "StructUtils/StructView.h"
+#include "Templates/Function.h"
+#endif // UE_VERSION_OLDER_THAN
 
 #include <concepts>
 #include <memory> // std::destroy_at
@@ -28,27 +35,36 @@ class UObject;
 class UPackageMap;
 
 struct FPropertyTag;
+struct FPropertyVisitorData;
+struct FPropertyVisitorInfo;
+struct FPropertyVisitorPath;
+
+enum class EPropertyVisitorControlFlow : uint8;
 
 namespace VariadicStruct
 {
-	/** Supported template type parameters for FVariadicStruct. */
-	template<typename T>
-	concept CSupportedType = std::is_class_v<T>
-		&& not std::is_const_v<T> // Otherwise, public API may eventually lead to UB due to type erasure.
-		&& not std::derived_from<T, FVariadicStruct>
-		&& not std::derived_from<T, FInstancedStruct>
-		&& not std::derived_from<T, FSharedStruct>
-		&& not std::derived_from<T, FConstSharedStruct>
-		&& requires(T)
+	template<typename... Args>
+	struct TypePack final {};
+
+	/** List of unsupported types for FVariadicStruct. */
+	using UnsupportedTypes = TypePack<FVariadicStruct, FInstancedStruct, FSharedStruct, FConstSharedStruct>;
+
+	/** Helper for combining multiple types within (not std::derived_from && ...). */
+	template<typename T, typename... Args>
+	consteval bool NotDerivedFrom(TypePack<Args...>)
 	{
-		{ TBaseStructure<T>::Get() } -> std::convertible_to<UScriptStruct*>;
-	};
+		return not (... || std::derived_from<T, Args>);
+	}
+
+	/** Supported template type parameters for FVariadicStruct. Top-level constness is not supported due to type erasure. */
+	template<typename T>
+	concept CSupportedType = std::is_class_v<T> && /* std::is_standard_layout_v<T> && */ NotDerivedFrom<T>(UnsupportedTypes()) && not std::is_const_v<T>;
 
 	/** Type-converts the value at an existing memory location. */
 	template<typename T> requires(CSupportedType<std::remove_const_t<T>>)
-	T* GetTypePtr(std::conditional_t<std::is_const_v<T>, const uint8*, uint8*> MemoryPtr)
+	T* GetTypedPtr(std::conditional_t<std::is_const_v<T>, const uint8*, uint8*> MemoryPtr)
 	{
-		// Formally, reinterpreting the non-standard_layout Derived* as Base* is UB.
+		// Formally speaking, reinterpreting the non standard_layout Derived* as Base* is UB.
 		return std::launder(reinterpret_cast<T*>(MemoryPtr));
 	}
 
@@ -65,6 +81,9 @@ namespace VariadicStruct
 	{
 		return FConstStructView(InValue.GetScriptStruct(), InValue.GetMemory());
 	}
+
+	/** Validates UScriptStruct to be used with FVariadicStruct. */
+	bool ValidateScriptStruct(const UScriptStruct* InScriptStruct);
 }
 
 /**
@@ -94,11 +113,11 @@ public:
 	FVariadicStruct& operator=(const FVariadicStruct& InOther);
 
 	/** FVariadicStruct::Make() should be used instead. */
-	FVariadicStruct(const FInstancedStruct&)	= delete;
-	FVariadicStruct(const FSharedStruct&)		= delete;
-	FVariadicStruct(const FConstSharedStruct&)	= delete;
-	FVariadicStruct(const FStructView&)			= delete;
-	FVariadicStruct(const FConstStructView&)	= delete;
+	FVariadicStruct(const FInstancedStruct&)   = delete;
+	FVariadicStruct(const FSharedStruct&)	   = delete;
+	FVariadicStruct(const FConstSharedStruct&) = delete;
+	FVariadicStruct(const FStructView&)		   = delete;
+	FVariadicStruct(const FConstStructView&)   = delete;
 
 	~FVariadicStruct() { Reset(); }
 
@@ -118,7 +137,7 @@ public:
 			}
 
 			// Destroy the existing struct directly.
-			std::destroy_at(VariadicStruct::GetTypePtr<T>(MemoryPtr));
+			std::destroy_at(VariadicStruct::GetTypedPtr<T>(MemoryPtr));
 		}
 		else
 		{
@@ -171,6 +190,13 @@ public: // Factories
 
 public: // Data Access
 
+	/** Helper for validating the underlying type. */
+	template<VariadicStruct::CSupportedType T, bool bExactType = false>
+	[[nodiscard]] bool IsTypeOf() const
+	{
+		return TBaseStructure<T>::Get() == ScriptStruct || (!bExactType && ScriptStruct && ScriptStruct->IsChildOf(TBaseStructure<T>::Get()));
+	}
+
 	/** Returns a const pointer to the struct value, or nullptr if the type doesn't match. */
 	template<VariadicStruct::CSupportedType T, bool bExactType = false>
 	[[nodiscard]] const T* GetValuePtr() const
@@ -178,11 +204,11 @@ public: // Data Access
 		// Use faster path if the type matches.
 		if (const UScriptStruct* const BaseStructure = TBaseStructure<T>::Get(); ScriptStruct == BaseStructure)
 		{
-			return VariadicStruct::GetTypePtr<const T>(GetTypeMemory<T>());
+			return VariadicStruct::GetTypedPtr<const T>(GetTypeMemory<T>());
 		}
 		else if (!bExactType && ScriptStruct && ScriptStruct->IsChildOf(BaseStructure))
 		{
-			return VariadicStruct::GetTypePtr<const T>(GetMemory());
+			return VariadicStruct::GetTypedPtr<const T>(GetMemory());
 		}
 
 		return nullptr;
@@ -195,13 +221,13 @@ public: // Data Access
 		// bExactType can be used to avoid branching and assert unexpected types.
 		if (bExactType || TBaseStructure<T>::Get() == ScriptStruct)
 		{
-			check(!bExactType || TBaseStructure<T>::Get() == ScriptStruct);
-			return *VariadicStruct::GetTypePtr<const T>(GetTypeMemory<T>());
+			checkf(!bExactType || TBaseStructure<T>::Get() == ScriptStruct, TEXT("FVariadicStruct: Exact type mismatch."));
+			return *VariadicStruct::GetTypedPtr<const T>(GetTypeMemory<T>());
 		}
 		else
 		{
-			check(ScriptStruct && ScriptStruct->IsChildOf(TBaseStructure<T>::Get()));
-			return *VariadicStruct::GetTypePtr<const T>(GetMemory());
+			checkf(ScriptStruct && ScriptStruct->IsChildOf(TBaseStructure<T>::Get()), TEXT("FVariadicStruct: Type mismatch."));
+			return *VariadicStruct::GetTypedPtr<const T>(GetMemory());
 		}
 	}
 
@@ -212,11 +238,11 @@ public: // Data Access
 		// Use faster path if the type matches.
 		if (const UScriptStruct* const BaseStructure = TBaseStructure<T>::Get(); ScriptStruct == BaseStructure)
 		{
-			return VariadicStruct::GetTypePtr<T>(GetMutableTypeMemory<T>());
+			return VariadicStruct::GetTypedPtr<T>(GetMutableTypeMemory<T>());
 		}
 		else if (!bExactType && ScriptStruct && ScriptStruct->IsChildOf(BaseStructure))
 		{
-			return VariadicStruct::GetTypePtr<T>(GetMutableMemory());
+			return VariadicStruct::GetTypedPtr<T>(GetMutableMemory());
 		}
 
 		return nullptr;
@@ -229,13 +255,13 @@ public: // Data Access
 		// bExactType can be used to avoid branching and assert unexpected types.
 		if (bExactType || TBaseStructure<T>::Get() == ScriptStruct)
 		{
-			check(!bExactType || TBaseStructure<T>::Get() == ScriptStruct);
-			return *VariadicStruct::GetTypePtr<T>(GetMutableTypeMemory<T>());
+			checkf(!bExactType || TBaseStructure<T>::Get() == ScriptStruct, TEXT("FVariadicStruct: Exact type mismatch."));
+			return *VariadicStruct::GetTypedPtr<T>(GetMutableTypeMemory<T>());
 		}
 		else
 		{
-			check(ScriptStruct && ScriptStruct->IsChildOf(TBaseStructure<T>::Get()));
-			return *VariadicStruct::GetTypePtr<T>(GetMutableMemory());
+			checkf(ScriptStruct && ScriptStruct->IsChildOf(TBaseStructure<T>::Get()), TEXT("FVariadicStruct: Type mismatch."));
+			return *VariadicStruct::GetTypedPtr<T>(GetMutableMemory());
 		}
 	}
 
@@ -292,6 +318,10 @@ public: // StructOpsTypeTraits
 	void GetPreloadDependencies(TArray<UObject*>& OutDeps);
 	bool NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess);
 	bool FindInnerPropertyInstance(FName PropertyName, const FProperty*& OutProp, const void*& OutData) const;
+#if !UE_VERSION_OLDER_THAN(5, 5, 0)
+	EPropertyVisitorControlFlow Visit(FPropertyVisitorPath& Path, const FPropertyVisitorData& Data, const TFunctionRef<EPropertyVisitorControlFlow(const FPropertyVisitorPath& /*Path*/, const FPropertyVisitorData& /*Data*/)> InFunc) const;
+	void* ResolveVisitedPathInfo(const FPropertyVisitorInfo& Info) const;
+#endif // UE_VERSION_OLDER_THAN
 
 protected:
 
@@ -372,5 +402,14 @@ struct TStructOpsTypeTraits<FVariadicStruct> : public TStructOpsTypeTraitsBase2<
 		WithGetPreloadDependencies = true,
 		WithNetSerializer = true,
 		WithFindInnerPropertyInstance = true,
+#if !UE_VERSION_OLDER_THAN(5, 5, 0)
+		WithClearOnFinishDestroy = true,
+		WithVisitor = true,
+#endif // UE_VERSION_OLDER_THAN
 	};
 };
+
+inline bool VariadicStruct::ValidateScriptStruct(const UScriptStruct* InScriptStruct)
+{
+	return !InScriptStruct || [=]<typename... Args>(TypePack<Args...>) { return (... && (TBaseStructure<Args>::Get() != InScriptStruct)); }(UnsupportedTypes());
+}
