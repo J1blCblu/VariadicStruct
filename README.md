@@ -15,9 +15,12 @@ Particularly useful when the expected types rarely exceed the buffer size, such 
 # Performance
 
 You should pay attention to how you assign a new structure value into the existing `FVariadicStruct`:
-1. Construct a new structure from type and copy its value using type erasure: `Variadic = FVariadicStruct::Make(MyVector);`.
-2. Copy construct a new structure using native constructor: `Variadic.InitializeAs<FVector>(MyVector);`.
-3. Copy a structure into the existing value without reconstructing: `Variadic.GetMutableValue<FVector>() = MyVector;`.
+1. Construct a new structure from type and copy its value using type erasure:  
+   `Variadic = FVariadicStruct::Make(MyVector);`
+3. Copy construct a new structure using native constructor:  
+   `Variadic.InitializeAs<FVector>(MyVector);`
+5. Copy a structure into the existing value without reconstructing:  
+   `Variadic.GetMutableValue<FVector>() = MyVector;`
 
 ## Benchmarks
 
