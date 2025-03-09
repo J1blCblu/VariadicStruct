@@ -49,16 +49,21 @@ namespace VariadicStruct
 	/** List of unsupported types for FVariadicStruct. */
 	using UnsupportedTypes = TypePack<FVariadicStruct, FInstancedStruct, FSharedStruct, FConstSharedStruct>;
 
-	/** Helper for combining multiple types within (not std::derived_from && ...). */
-	template<typename T, typename... Args>
-	consteval bool NotDerivedFrom(TypePack<Args...>)
+	/** Generic concept of UScriptStruct wrappers. */
+	template<typename T>
+	concept CScriptStructWrapper = requires(T Value)
 	{
-		return not (... || std::derived_from<T, Args>);
-	}
+		{ Value.GetScriptStruct() } -> std::convertible_to<const UScriptStruct*>;
+		{ Value.GetMemory() } -> std::convertible_to<const uint8*>;
+		{ Value.IsValid() } -> std::convertible_to<bool>;
+	};
 
 	/** Supported template type parameters for FVariadicStruct. Top-level constness is not supported due to type erasure. */
 	template<typename T>
-	concept CSupportedType = std::is_class_v<T> && /* std::is_standard_layout_v<T> && */ NotDerivedFrom<T>(UnsupportedTypes()) && not std::is_const_v<T>;
+	concept CSupportedType = not CScriptStructWrapper<T> && std::is_class_v<T> && not std::is_const_v<T> && requires(T Value)
+	{
+		{ TBaseStructure<T>::Get() } -> std::convertible_to<const UScriptStruct*>;
+	};
 
 	/** Type-converts the value at an existing memory location. */
 	template<typename T> requires(CSupportedType<std::remove_const_t<T>>)
@@ -69,14 +74,14 @@ namespace VariadicStruct
 	}
 
 	/** Returns FStructView from a generic type value. */
-	template<typename T> requires(not std::derived_from<FStructView>)
+	template<typename T> requires(not std::derived_from<T, FStructView>)
 	FStructView MakeView(T& InValue)
 	{
 		return FStructView(InValue.GetScriptStruct(), InValue.GetMutableMemory());
 	}
 
 	/** Returns FConstStructView from a generic type value. */
-	template<typename T> requires(not std::derived_from<FConstStructView>)
+	template<typename T> requires(not std::derived_from<T, FConstStructView>)
 	FConstStructView MakeConstView(const T& InValue)
 	{
 		return FConstStructView(InValue.GetScriptStruct(), InValue.GetMemory());
@@ -185,6 +190,15 @@ public: // Factories
 	{
 		FVariadicStruct Variadic;
 		Variadic.InitializeAs(InScriptStruct, InStructMemory);
+		return Variadic;
+	}
+
+	/** Default constructs a new FVariadicStruct from a generic struct wrapper. */
+	template<VariadicStruct::CScriptStructWrapper T>
+	[[nodiscard]] static FVariadicStruct Make(const T& InStructWrapper)
+	{
+		FVariadicStruct Variadic;
+		Variadic.InitializeAs(InStructWrapper.GetScriptStruct(), InStructWrapper.GetMemory());
 		return Variadic;
 	}
 
@@ -309,11 +323,11 @@ public: // Utility
 public: // StructOpsTypeTraits
 
 	// Mostly copy pasted from FInstancedStruct.
-	bool Serialize(FArchive& Ar);
-	bool Identical(const FVariadicStruct* Other, uint32 PortFlags) const;
+	bool Serialize(FArchive& Ar, const FConstStructView* Defaults = nullptr);
+	bool Identical(const FVariadicStruct* Other, uint32 PortFlags = PPF_None) const;
 	void AddStructReferencedObjects(FReferenceCollector& Collector);
-	bool ExportTextItem(FString& ValueStr, const FVariadicStruct& DefaultValue, UObject* Parent, int32 PortFlags, UObject* ExportRootScope) const;
-	bool ImportTextItem(const TCHAR*& Buffer, int32 PortFlags, UObject* Parent, FOutputDevice* ErrorText, FArchive* InSerializingArchive = nullptr);
+	bool ExportTextItem(FString& ValueStr, const FVariadicStruct& DefaultValue = FVariadicStruct(), UObject* Parent = nullptr, int32 PortFlags = PPF_None, UObject* ExportRootScope = nullptr) const;
+	bool ImportTextItem(const TCHAR*& Buffer, int32 PortFlags = PPF_None, UObject* Parent = nullptr, FOutputDevice* ErrorText = nullptr, FArchive* InSerializingArchive = nullptr);
 	bool SerializeFromMismatchedTag(const FPropertyTag& Tag, FStructuredArchive::FSlot Slot);
 	void GetPreloadDependencies(TArray<UObject*>& OutDeps);
 	bool NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuccess);

@@ -4,6 +4,7 @@
 
 #include <cstddef> // offsetof()
 
+#include "CoreGlobals.h"
 #include "Logging/LogMacros.h"
 #include "Misc/CString.h"
 #include "Serialization/CustomVersion.h"
@@ -194,7 +195,8 @@ void FVariadicStruct::Reset()
 	ResetStructData();
 }
 
-bool FVariadicStruct::Serialize(FArchive& Ar)
+// FConstStructView* is used to support nullptr as defaults.
+bool FVariadicStruct::Serialize(FArchive& Ar, const FConstStructView* StructDefaults)
 {
 	Ar.UsingCustomVersion(FVariadicStructCustomVersion::Guid);
 
@@ -208,33 +210,50 @@ bool FVariadicStruct::Serialize(FArchive& Ar)
 			Ar.Preload(SerializedScriptStruct);
 		}
 
-		// Initialize only if the type changes.
-		if (ScriptStruct != SerializedScriptStruct)
-		{
-			InitializeAs(SerializedScriptStruct);
-		}
-
 		int32 SerialSize = 0;
 		Ar << SerialSize;
 
-		// Check if the type is not missed.
-		if (!ScriptStruct && SerialSize > 0)
+		// Initialize with defaults if DefaultScriptStruct is valid and doesn't match the serialized one.
+		if (StructDefaults && StructDefaults->GetScriptStruct() != SerializedScriptStruct)
 		{
-			// Step over missing data.
-			Ar.Seek(Ar.Tell() + SerialSize);
-
-			UE_LOG(LogCore, Warning, TEXT("FVariadicStruct: Failed to serialize UScriptStruct with SerialSize: %u, SerializedProperty: %s, LinkerRoot: %s."),
+			UE_LOG(LogSerialization, Log, TEXT("FVariadicStruct: DefaultScriptStruct type mismatch with SerialSize: %u, SerializedProperty: %s, LinkerRoot: %s."),
 				   SerialSize, *GetPathNameSafe(Ar.GetSerializedProperty()), Ar.GetLinker() ? *GetPathNameSafe(Ar.GetLinker()->LinkerRoot) : TEXT("NoLinker"));
+
+			InitializeAs(StructDefaults->GetScriptStruct(), StructDefaults->GetMemory());
+			Ar.Seek(Ar.Tell() + SerialSize);
+			return true;
+		}
+
+		const uint8* const Defaults = StructDefaults ? StructDefaults->GetMemory() : nullptr;
+
+		// Initialize only if the type is different or we have defaults.
+		if (StructDefaults || ScriptStruct != SerializedScriptStruct)
+		{
+			// Construct and/or copy properties from defaults.
+			InitializeAs(SerializedScriptStruct, Defaults);
 		}
 
 		// Serialize the actual value.
 		if (uint8* const MemoryPtr = GetMutableMemory())
 		{
-			ConstCast(ScriptStruct)->SerializeItem(Ar, MemoryPtr, /* Defaults */ nullptr);
+			ConstCast(ScriptStruct)->SerializeItem(Ar, MemoryPtr, Defaults);
+		}
+		else if (SerialSize > 0)
+		{
+			UE_LOG(LogSerialization, Warning, TEXT("FVariadicStruct: Failed to serialize UScriptStruct with SerialSize: %u, SerializedProperty: %s, LinkerRoot: %s."),
+				   SerialSize, *GetPathNameSafe(Ar.GetSerializedProperty()), Ar.GetLinker() ? *GetPathNameSafe(Ar.GetLinker()->LinkerRoot) : TEXT("NoLinker"));
+
+			Ar.Seek(Ar.Tell() + SerialSize);
 		}
 	}
 	else if (Ar.IsSaving())
 	{
+		// Reset to defaults if DefaultScriptStruct doesn't match.
+		if (StructDefaults && StructDefaults->GetScriptStruct() != ScriptStruct)
+		{
+			InitializeAs(StructDefaults->GetScriptStruct(), StructDefaults->GetMemory());
+		}
+
 #if WITH_EDITOR
 		const UUserDefinedStruct* const UserDefinedStruct = Cast<UUserDefinedStruct>(ScriptStruct);
 		if (UserDefinedStruct && UserDefinedStruct->Status == EUserDefinedStructureStatus::UDSS_Duplicate && UserDefinedStruct->PrimaryStruct.IsValid())
@@ -260,7 +279,7 @@ bool FVariadicStruct::Serialize(FArchive& Ar)
 		// Serialize the actual value.
 		if (uint8* const MemoryPtr = GetMutableMemory())
 		{
-			ConstCast(ScriptStruct)->SerializeItem(Ar, MemoryPtr, /* Defaults */ nullptr);
+			ConstCast(ScriptStruct)->SerializeItem(Ar, MemoryPtr, StructDefaults ? StructDefaults->GetMemory() : nullptr);
 		}
 
 		// Calculate the total serialized size.
@@ -276,10 +295,10 @@ bool FVariadicStruct::Serialize(FArchive& Ar)
 	}
 	else if (Ar.IsCountingMemory() || Ar.IsModifyingWeakAndStrongReferences() || Ar.IsObjectReferenceCollector())
 	{
-		// Report type
+		// Report type.
 		Ar << ScriptStruct;
 
-		// Report value
+		// Report value.
 		if (uint8* const MemoryPtr = GetMutableMemory())
 		{
 			ConstCast(ScriptStruct)->SerializeItem(Ar, MemoryPtr, /* Defaults */ nullptr);
@@ -426,7 +445,7 @@ bool FVariadicStruct::SerializeFromMismatchedTag(const FPropertyTag& Tag, FStruc
 				// Step over missing data.
 				Ar.Seek(Ar.Tell() + SerialSize);
 
-				UE_LOG(LogCore, Warning, TEXT("FVariadicStruct: Failed to serialize UScriptStruct with SerialSize: %u, SerializedProperty: %s, LinkerRoot: %s."),
+				UE_LOG(LogSerialization, Warning, TEXT("FVariadicStruct: Failed to serialize UScriptStruct with SerialSize: %u, SerializedProperty: %s, LinkerRoot: %s."),
 					   SerialSize, *GetPathNameSafe(Ar.GetSerializedProperty()), Ar.GetLinker() ? *GetPathNameSafe(Ar.GetLinker()->LinkerRoot) : TEXT("NoLinker"));
 			}
 
@@ -583,7 +602,7 @@ bool FVariadicStruct::NetSerialize(FArchive& Ar, UPackageMap* Map, bool& bOutSuc
 
 			if (ScriptStruct == nullptr)
 			{
-				UE_LOG(LogCore, Error, TEXT("FVariadicStruct: Failed to NetSerialize UScriptStruct and recover the corrupted archive."));
+				UE_LOG(LogNetSerialization, Error, TEXT("FVariadicStruct: Failed to NetSerialize UScriptStruct and recover the corrupted archive."));
 				bOutSuccess = false;
 				Ar.SetError();
 			}
